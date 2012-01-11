@@ -1,0 +1,354 @@
+<?php
+/**
+ * @file
+ * Adds support for sending SMS messages using the Ez Texting gateway.
+ */
+
+// Developed by viktor@eztexting.com.
+/**
+ * Implements of hook_help().
+ */
+function sms_eztexting_help($path, $arg) {
+  $default_gateway = sms_default_gateway();
+  $obscenity_message = '<p>Please note when using Ez Texting: We do not allow illegal, obscene or sexually oriented messages. Message can be up to a max of 160 characters. We do not recommend using non-standard characters such as but not limited to ~ or { or }.</p>';
+  switch ($path) {
+    case 'admin/help#sms_eztexting':
+      return '<p><strong>Create an Ez Texting account:</strong> <a href="http://www.eztexting.com">Ez Texting</a> is free to try and inexpensive to use for your text messaging needs. <a href="http://www.eztexting.com/group-sms-pricing.html">See our pricing</a>, and <a href="http://www.eztexting.com/signup.php">start your free trial now</a>. In order to use Ez Texting within Drupal you will need to activate API on your account. You can do so by <a href="http://www.eztexting.com/ticketing-contact.php">contacting support</a> to let them know you\'re using the Drupal plugin.</p>
+                    <p>Please note when using Ez Texting: We do not allow illegal, obscene or sexually oriented messages. Message can be up to a max of 160 characters. We do not recommend using non-standard characters such as but not limited to ~ or { or }.</p>';
+    case 'admin/smsframework/gateways/%':
+      if (!in_array('eztexting', $arg)) {
+        return;
+      }
+      return $obscenity_message;
+    case 'sms_blast':
+      if (isset($default_gateway['identifier']) && $default_gateway['identifier'] == 'eztexting') {
+        return $obscenity_message;
+      }
+    default :
+      return;
+  }
+}
+
+/**
+ * Implements of hook_gateway_info().
+ */
+function sms_eztexting_gateway_info() {
+  return array(
+    'eztexting' => array(
+      'name' => 'Ez Texting',
+      'configure form' => 'sms_eztexting_admin_form',
+      'send' => 'sms_eztexting_send',
+      'send form' => 'sms_eztexting_send_form',
+      'validate number' => 'sms_eztexting_validate_number',
+    ),
+  );
+}
+
+/**
+ * Gateway configuration form
+ *
+ * @param array $configuration
+ *   array of configuration gateway
+ *
+ * @return array
+ *   return gateway configuration form
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_admin_form($configuration) {
+
+  $sms_eztexting_user_default     = isset($configuration['sms_eztexting_user']) ? $configuration['sms_eztexting_user'] : '';
+  $sms_eztexting_password_default = isset($configuration['sms_eztexting_password']) ? $configuration['sms_eztexting_password'] : '';
+
+  $form = array(
+    'sms_eztexting_user' => array(
+      '#type' => 'textfield',
+      '#title' => t('User'),
+      '#description' => t('The username of your Ez Texting account.'),
+      '#size' => 40,
+      '#maxlength' => 255,
+      '#default_value' => $sms_eztexting_user_default,
+    ),
+    'sms_eztexting_password' => array(
+      '#type' => 'textfield',
+      '#title' => t('Password'),
+      '#description' => t('The current password on your Ez Texting account.'),
+      '#size' => 30,
+      '#maxlength' => 64,
+      '#default_value' => $sms_eztexting_password_default,
+    ),
+  );
+  return $form;
+}
+
+/**
+ * Validation configuration form
+ *
+ * @param array $form
+ *   configuration form
+ *
+ * @param array $form_state
+ *   array of form values
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_admin_form_validate($form, &$form_state) {
+  $result = sms_eztexting_command('auth', array(), $form_state['values']);
+  if (!$result['status']) {
+    form_set_error('', t('Ez Texting gateway error occured: @error.', array('@error' => $result['message'])));
+  }
+}
+
+/**
+ * Returns custom additions to be added to the send forms
+ *
+ * @return array
+ *   send form with countries set
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_send_form() {
+  $form['country'] = array(
+    '#type' => 'select',
+    '#title' => t('Country'),
+    '#multiple' => FALSE,
+    '#options' => sms_eztexting_country_codes(),
+    '#default_value' => -1,
+  );
+
+  return $form;
+}
+
+/**
+ * Validate phone number
+ *
+ * @param string $number
+ *   phone number
+ *
+ * @param array $options
+ *   arrray of options
+ *
+ * @return string|void
+ *   if phone number not valid return error message else return void
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_validate_number($number, $options) {
+  $phone_number = trim($number);
+  $phone_number = preg_replace('/[^\d]/', '', $phone_number);
+
+  if (strlen($phone_number) == 11 && substr($phone_number, 0, 1) == '1') {
+    $phone_number = substr($phone_number, 1);
+  }
+
+  // Validate phone number.
+  if (strlen($phone_number) != 10) {
+    return t('The phone number is invalid.');
+  }
+}
+
+/**
+ * Callback for sending messages.
+ *
+ * @param string $number
+ *   phone number
+ *
+ * @param string $message
+ *   message to send
+ *
+ * @param array $options
+ *   array of options
+ *
+ * @return array
+ *   Return array contain the status false and errror message if sending failed.
+ *   Otherwise return status true and response body.
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_send($number, $message, $options) {
+  $number = str_replace(array(' ', '+'), '', $number);
+  return sms_eztexting_command('sendmsg', array('PhoneNumbers' => (array) $number, 'Message' => $message));
+}
+
+/**
+ * Executes a command using the Ez Texting API
+ *
+ * @param string $command
+ *   command name
+ *
+ * @param array $data
+ *   command data set
+ *
+ * @param array $config
+ *   gateway configuration
+ *
+ * @return array
+ *   return mixed array result of execute command
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_command($command, $data = array(), $config = NULL) {
+  $gateway = sms_gateways('gateway', 'eztexting');
+
+  if ($config == NULL) {
+    $config = $gateway['configuration'];
+  }
+
+  $user = $config['sms_eztexting_user'];
+  $password = $config['sms_eztexting_password'];
+
+  $data += array(
+    'User' => $user,
+    'Password' => $password,
+    'format' => 'xml',
+  );
+
+  switch ($command) {
+    case 'auth':
+      $request_url = "https://app.eztexting.com";
+      break;
+    case 'sendmsg':
+      $request_url = "https://app.eztexting.com/sending/messages";
+      $data['MessageTypeID'] = 1;
+      break;
+    default :
+      break;
+  }
+
+  $request_headers = array('Content-Type' => 'application/x-www-form-urlencoded');
+
+  // !@debug
+  watchdog('sms-eztexting',
+    'Sending to ' . $request_url . '?' . http_build_query($data, '', '&'),
+    NULL,
+    WATCHDOG_DEBUG
+  );
+
+  $http_response = drupal_http_request($request_url,
+                  $request_headers,
+                  'POST',
+                  http_build_query($data, '', '&'),
+                  0
+  );
+
+  switch ($command) {
+    case 'auth':
+      $result = sms_eztexting_parse_auth_response($http_response);
+      break;
+    case 'sendmsg':
+      $result = sms_eztexting_parse_send_sms_response($http_response);
+      break;
+    default :
+      break;
+  }
+
+  // !@debug
+  watchdog('sms-eztexting',
+    'Sent: ' . print_r($data, TRUE) . ' Received: ' . print_r($result, TRUE),
+    NULL, WATCHDOG_DEBUG
+  );
+
+  return $result;
+}
+
+/**
+ * Parse Ez Texting auth response
+ *
+ * @param object $http_response
+ *   HTTP Response
+ *
+ * @return array
+ *   return array with key status TRUE if response is successful
+ *   otherwise return array with status FALSE and error message.
+ */
+function sms_eztexting_parse_auth_response($http_response) {
+  if ($http_response->code == 302) {
+    return array(
+      'status' => TRUE,
+    );
+  }
+
+  return array(
+    'status' => FALSE,
+    'message' => t('Authentication credentials are missing or incorrect.'),
+  );
+}
+
+/**
+ * Parse Ez Texting send message response
+ *
+ * @param object $http_response
+ *   HTTP Response
+ *
+ * @return array
+ *   return array with key status TRUE if response is successful
+ *   otherwise return array with status FALSE and error message.
+ */
+function sms_eztexting_parse_send_sms_response($http_response) {
+
+  $xml = @simplexml_load_string($http_response->data);
+
+  if ($xml === FALSE) {
+    return array(
+      'status' => FALSE,
+      'message' => t('Wrong response'),
+    );
+  }
+
+  if (!sms_eztexting_is_successful_response($xml->Code)) {
+
+    $error_message = '';
+    foreach ($xml->Errors as $error) {
+      $error_message .= $error->Error;
+    }
+
+    $result = array(
+      'status' => FALSE,
+      'message' => t('An error occured during the HTTP request: @error', array('@error' => $error_message)),
+    );
+
+    return $result;
+  }
+
+  return array(
+    'status' => TRUE,
+    'data' => $xml->Entry,
+  );
+}
+
+/**
+ * Return supported Ez Texting Country
+ *
+ * @return array
+ *   return array of contries
+ */
+function sms_eztexting_country_codes() {
+  return array(
+    1 => 'USA',
+    2 => 'Canada',
+  );
+}
+
+/**
+ * Check whether the response in successful
+ *
+ * @param int $code
+ *   response code
+ *
+ * @return boolean
+ *   return TRUE if response is successful OTHERWISE return FALSE
+ *
+ * @author EzTexting
+ */
+function sms_eztexting_is_successful_response($code) {
+  if ($code == 302) {
+    return TRUE;
+  }
+
+  $restype = floor($code / 100);
+  if ($restype == 2 || $restype == 1) {
+    return TRUE;
+  }
+
+  return FALSE;
+}

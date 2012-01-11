@@ -1,0 +1,255 @@
+<?php
+/**
+ * @file
+ * Test file for sms_eztexting module
+ */
+
+class SmsEzTextingTestCase extends DrupalUnitTestCase {
+  /**
+   * Tests description
+   *
+   * @return array
+   *   array of tests description
+   */
+  public static function getInfo() {
+    return array(
+      'name' => t('Ez Texting sms gateway basic tests'),
+      'description' => t('Test basic functionality of Ez Texting sms gateway module.'),
+      'group' => t('SMS Framework '),
+    );
+  }
+
+  /**
+   * Check gateway info method
+   */
+  public function testCheckGatewayInfo() {
+    $expected = array(
+      'eztexting' => array(
+        'name' => 'Ez Texting',
+        'configure form' => 'sms_eztexting_admin_form',
+        'send' => 'sms_eztexting_send',
+        'send form' => 'sms_eztexting_send_form',
+        'validate number' => 'sms_eztexting_validate_number',
+      ),
+    );
+    $this->assertEqual(sms_eztexting_gateway_info(), $expected);
+  }
+
+  /**
+   * Check configuration form
+   */
+  public function testCheckGatewayConfigurationForm() {
+
+    $expected_form = array(
+      'sms_eztexting_user' => array(
+        '#type' => 'textfield',
+        '#title' => t('User'),
+        '#description' => t('The username of your Ez Texting account.'),
+        '#size' => 40,
+        '#maxlength' => 255,
+        '#default_value' => '',
+      ),
+      'sms_eztexting_password' => array(
+        '#type' => 'textfield',
+        '#title' => t('Password'),
+        '#description' => t('The current password on your Ez Texting account.'),
+        '#size' => 30,
+        '#maxlength' => 64,
+        '#default_value' => '',
+      ),
+    );
+
+    $default_params = array();
+    $this->assertEqual(sms_eztexting_admin_form(array($default_params)),
+      $expected_form);
+
+    $expected_form = array(
+      'sms_eztexting_user' => array(
+        '#type' => 'textfield',
+        '#title' => t('User'),
+        '#description' => t('The username of your Ez Texting account.'),
+        '#size' => 40,
+        '#maxlength' => 255,
+        '#default_value' => 'mickey',
+      ),
+      'sms_eztexting_password' => array(
+        '#type' => 'textfield',
+        '#title' => t('Password'),
+        '#description' => t('The current password on your Ez Texting account.'),
+        '#size' => 30,
+        '#maxlength' => 64,
+        '#default_value' => 'mouse',
+      ),
+    );
+
+    $default_params = array(
+      'sms_eztexting_user' => 'mickey',
+      'sms_eztexting_password' => 'mouse',
+    );
+    $this->assertEqual(sms_eztexting_admin_form($default_params), $expected_form);
+  }
+
+  /**
+   * Check send form
+   */
+  public function testCheckSendForm() {
+    $expected_form = array(
+      'country' => array(
+        '#type' => 'select',
+        '#title' => t('Country'),
+        '#multiple' => FALSE,
+        '#options' => array(1 => 'USA', 2 => 'Canada'),
+        '#default_value' => -1,
+      ),
+    );
+
+    $this->assertEqual(sms_eztexting_send_form(), $expected_form);
+  }
+
+  /**
+   * Check validation phone number method when not valid phone number
+   */
+  public function testInvalidPhoneNumberShouldReturnErrorMessage() {
+    $return_value = sms_eztexting_validate_number('80634285794', array());
+    $this->assertEqual($return_value, t('The phone number is invalid.'));
+  }
+
+  /**
+   * Check validation phone number method when valid phone number
+   */
+  public function testValidPhoneNumberShouldReturnNull() {
+    $return_value = sms_eztexting_validate_number('8634285794', array());
+    $this->assertEqual($return_value, NULL);
+  }
+
+  /**
+   * Test gateway contries set
+   */
+  public function testShouldReturnCorrectCountries() {
+    $expected = array(
+      1 => 'USA',
+      2 => 'Canada',
+    );
+
+    $this->assertEqual($expected, sms_eztexting_country_codes());
+  }
+
+  /**
+   * Test check response method
+   */
+  public function testIfSuccessfulResponseShouldReturnTrue() {
+    $this->assertEqual(TRUE, sms_eztexting_is_successful_response(200));
+    $this->assertEqual(TRUE, sms_eztexting_is_successful_response(201));
+    $this->assertEqual(TRUE, sms_eztexting_is_successful_response(302));
+  }
+
+  /**
+   * Test check response method
+   */
+  public function testIfFaileResponseShouldReturnFalse() {
+    $this->assertEqual(FALSE, sms_eztexting_is_successful_response(404));
+    $this->assertEqual(FALSE, sms_eztexting_is_successful_response(500));
+  }
+
+  /**
+   * Test for check return value when response is failed
+   */
+  public function testFailedAuthResponseShouldReturnCorrectStatus() {
+
+    $response = new stdClass();
+    $response->code = 403;
+
+    $return_value = array(
+      'status' => FALSE,
+      'message' => t('Authentication credentials are missing or incorrect.'),
+    );
+
+    $this->assertEqual($return_value,
+      sms_eztexting_parse_auth_response($response));
+  }
+
+  /**
+   * Test for check return value when response is successful
+   */
+  public function testSuccessAuthResponseShouldReturnCorrectStatus() {
+
+    $response = new stdClass();
+    $response->code = 302;
+
+    $return_value = array(
+      'status' => TRUE,
+    );
+
+    $this->assertEqual($return_value,
+      sms_eztexting_parse_auth_response($response));
+  }
+
+  /**
+   * Test for check return value when response is failed
+   */
+  public function testSendSmsReturnWrongResponseShouldReturnError() {
+    $return_value = array(
+      'status' => FALSE,
+      'message' => t('Wrong response'),
+    );
+
+    $http_response = new stdClass();
+    $http_response->data = '';
+
+    $this->assertEqual($return_value,
+      sms_eztexting_parse_send_sms_response($http_response));
+  }
+
+  /**
+   * Test for check return value when response is failed
+   */
+  public function testSendSmsFailedShouldReturnError() {
+    $xml = '<?xml version="1.0" encoding="UTF-8"?>
+                <Response>
+                    <Status>Failure</Status>
+                    <Code>403</Code>
+                    <Errors>
+                        <Error>Wrong phone number</Error>
+                    </Errors>
+                </Response>';
+
+    $http_response = new stdClass();
+    $http_response->data = $xml;
+
+    $return_value = array(
+      'status' => FALSE,
+      'message' => t('An error occured during the HTTP request: @error', array('@error' => 'Wrong phone number')),
+    );
+
+    $this->assertEqual($return_value,
+      sms_eztexting_parse_send_sms_response($http_response));
+  }
+
+  /**
+   * Test for check return value when response is successful
+   */
+  public function testSuccessSendSmsResponseShouldReturnCorrectStatus() {
+    $xml_data = '<?xml version="1.0" encoding="UTF-8"?>
+                <Response>
+                    <Status>Success</Status>
+                    <Code>201</Code>
+                    <Entry>
+                        <MessageID>2052</MessageID>
+                        <Message>Medved</Message>
+                    </Entry>
+                </Response>';
+
+    $http_response = new stdClass();
+    $http_response->data = $xml_data;
+
+    $xml = @simplexml_load_string($xml_data);
+
+    $return_value = array(
+      'status' => TRUE,
+      'data' => $xml->Entry,
+    );
+
+    $result = sms_eztexting_parse_send_sms_response($http_response);
+    $this->assertEqual(print_r($return_value, TRUE), print_r($result, TRUE));
+  }
+}

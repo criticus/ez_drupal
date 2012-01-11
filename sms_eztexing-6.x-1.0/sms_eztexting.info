@@ -1,0 +1,9 @@
+name = "Ez Texting"
+description = "Allows the SMS Framework to use Ez Texting as a gateway."
+package = SMS Framework
+dependencies[] = sms
+core = 6.x
+php = 5.x
+
+; Drupal 6
+files[] = sms_eztexting.test
